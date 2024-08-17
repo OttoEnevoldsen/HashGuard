@@ -4,13 +4,35 @@ import os
 def hashguard(input_text, salt_file, length):
     with open(salt_file, "rb") as f:
         salt = f.read().decode(errors="ignore")
-    output = ""
+    
     input_text += salt
-    unique_value = sum(ord(c) for c in input_text)
+    mixed_input = "".join(
+        input_text[i % len(input_text)] + salt[i % len(salt)]
+        for i in range(max(len(input_text), len(salt)))
+    )
+    
+    unique_value = sum(ord(c) for c in mixed_input)
+    random_factor = sum(ord(c) * i for i, c in enumerate(mixed_input)) % 128
+    
+    output = ""
     for i in range(length):
-        unique_value += i
-        output += chr(((ord(input_text[i * unique_value % len(input_text)]) * unique_value // (i + 1)) % 95) + 32)
+        unique_value ^= ord(mixed_input[i * unique_value % len(mixed_input)])
+        unique_value = (unique_value << 5 | unique_value >> 27) & 0xFFFFFFFF
+        output += chr(((ord(mixed_input[i * unique_value % len(mixed_input)]) * (unique_value + random_factor) // (i + 1)) % 95) + 32)
+    
+    output = iterative_hash(output, 64)
     return output
+
+def iterative_hash(output, rounds):
+    for _ in range(rounds):
+        new_output = ""
+        unique_value = sum(ord(c) for c in output)
+        for i in range(len(output)):
+            unique_value += i
+            new_output += chr(((ord(output[i * unique_value % len(output)]) * unique_value // (i + 1)) % 95) + 32)
+        output = new_output
+    return output
+
 
 def generate_salt(filename, length):
     with open(filename, "wb") as f:
@@ -22,15 +44,17 @@ def main():
  | | | | __ _ ___| |__  / ___|_   _  __ _ _ __ __| |
  | |_| |/ _` / __| '_ \| |  _| | | |/ _` | '__/ _` |
  |  _  | (_| \__ \ | | | |_| | |_| | (_| | | | (_| |
- |_| |_|\__,_|___/_| |_|\____|\__,_|\__,_|_|  \__,_| - v1.2""")
+ |_| |_|\__,_|___/_| |_|\____|\__,_|\__,_|_|  \__,_| - v1.8""")
     print("-" * 64)
     while True:
-        command = input("Hash Plaintext or Salt [-hash, -salt]: ")
+        command = input("Hash Plaintext or Salt [-hash, -salt, -exit]: ")
         match command:
             case "-hash":
                 ui_hash()
             case "-salt":
                 ui_salt()
+            case "-exit":
+                break
             case _:
                 print(f"Invalid command: {command}")
 
